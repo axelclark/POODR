@@ -1,44 +1,19 @@
 defmodule POODR.Gear do
-  alias POODR.{Gear, Wheel}
+  use GenServer
 
-  defstruct chainring: :none, cog: :none, wheel: :none
+  alias POODR.Gear
 
-  def start_link(chainring, cog, wheel) do
-    Agent.start_link(fn ->
-      %Gear{chainring: chainring, cog: cog, wheel: wheel}
-    end)
+  defstruct chainring: :none, cog: :none, rim: :none, tire: :none
+
+  def start_link(chainring, cog, rim, tire) do
+    GenServer.start_link(__MODULE__, [chainring, cog, rim, tire])
   end
 
-  def chainring(gear), do: Agent.get(gear, &(&1.chainring))
-  def cog(gear),       do: Agent.get(gear, &(&1.cog))
-  def wheel(gear),     do: Agent.get(gear, &(&1.wheel))
-
-  def ratio(gear) do
-    chainring(gear) / cog(gear)
+  def init([chainring, cog, rim, tire]) do
+    {:ok, %Gear{chainring: chainring, cog: cog, rim: rim, tire: tire}}
   end
 
-  def gear_inches(gear) do
-    ratio(gear) * Wheel.diameter(wheel(gear))
-  end
-end
-
-defmodule POODR.Wheel do
-  alias POODR.Wheel
-
-  defstruct rim: :none, tire: :none
-
-  def start_link(rim, tire) do
-    Agent.start_link(fn -> %Wheel{rim: rim, tire: tire} end)
-  end
-
-  def tire(wheel), do: Agent.get(wheel, &(&1.tire))
-  def rim(wheel),  do: Agent.get(wheel, &(&1.rim))
-
-  def diameter(wheel) do
-    rim(wheel) + (tire(wheel) * 2)
-  end
-
-  def circumference(wheel) do
-    diameter(wheel) * :math.pi()
+  def handle_call({:chainring}, _from, state) do
+    {:reply, state.chainring, state}
   end
 end
