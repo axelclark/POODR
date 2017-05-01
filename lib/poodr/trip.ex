@@ -1,39 +1,59 @@
 defmodule Trip do
   use GenServer
 
-  defstruct bicycles: :none, bikes_ready: 0
+  defstruct bicycles: :none, bikes_ready: 0, name: :none
 
   # Client API
 
-  def start_link() do
-    GenServer.start_link(__MODULE__, %Trip{})
+  def start_link(name, num_bikes) do
+    IO.puts "Starting Trip for #{name}"
+
+    GenServer.start_link(
+      __MODULE__,
+      {name, num_bikes},
+      name: via_tuple(name)
+    )
   end
 
-  def ready?(trip) when is_pid trip do
-    GenServer.call(trip, :trip_ready?)
+  defp via_tuple(name) do
+    {:via, Registry, {:process_registry, {:trip, name}}}
   end
 
-  def prepare(trip, preparers) do
-    GenServer.cast(trip, {:prepare, preparers})
+  def new(name, num_bikes) do
+    TripSupervisor.start_child(name, num_bikes)
+  end
+
+  def ready?(name) do
+    GenServer.call(via_tuple(name), :trip_ready?)
+  end
+
+  def prepare(name) do
+    GenServer.cast(via_tuple(name), :prepare)
   end
 
   # Server Callbacks
 
-  def init(trip) do
-    {:ok, bike1} = Bicycle.start_link
-    {:ok, bike2} = Bicycle.start_link
-    bicycles = [bike1, bike2]
-    {:ok, %Trip{trip | bicycles: bicycles}}
+  def init({name, num_bikes}) do
+    trip = %Trip{name: name}
+
+    bikes =
+      for bike <- 1..num_bikes do
+        IO.puts "creating bike: #{bike}"
+        bike_id = "#{name} bike: #{bike}"
+        {:ok, _bike} =
+          Trip.BikeSupervisor.start_child(name, bike_id)
+        bike_id
+      end
+
+    {:ok, %Trip{trip | bicycles: bikes}}
   end
 
   def handle_call(:trip_ready?, _from, state) do
-    case trip_ready?(state) do
-      true  -> {:reply, true, state}
-      false -> {:reply, false, state}
-    end
+    {:reply, trip_ready?(state), state}
   end
 
-  def handle_cast({:prepare, preparers}, state) do
+  def handle_cast(:prepare, state) do
+    preparers = get_preparers()
     prepare_trip(preparers)
     {:noreply, state}
   end
@@ -48,6 +68,12 @@ defmodule Trip do
   end
 
   # Helper Functions
+
+  defp get_preparers() do
+    Registry.Preparers
+    |> Registry.lookup(:preparer)
+    |> Enum.map(fn({pid, _key}) -> pid end)
+  end
 
   defp prepare_trip(preparers) do
     Enum.each preparers, fn preparer ->
@@ -70,10 +96,18 @@ defmodule Mechanic do
   # Client API
 
   def start_link() do
-    GenServer.start_link(__MODULE__,%{})
+    IO.puts "Starting Mechanic"
+
+    GenServer.start_link(__MODULE__, nil, name: :mechanic)
   end
 
   # Server Callbacks
+
+  def init(_) do
+    # Registry.start_link(:duplicate, Registry.Preparers)
+    Registry.register(Registry.Preparers, :preparer, :mechanic)
+    {:ok, %{}}
+  end
 
   def handle_cast({:prepare_trip, trip}, state) do
     request_bicycles(trip)
@@ -98,35 +132,45 @@ defmodule Mechanic do
 
   defp service_bicycles(bicycles, trip, state) do
     Enum.reduce bicycles, state, fn bike, state ->
-      service_bike(bike)
+      Bicycle.service_bike(bike)
       Map.put(state, bike, trip)
     end
-  end
-
-  defp service_bike(bike) do
-    GenServer.cast(bike, {:service, self()})
   end
 end
 
 defmodule Bicycle do
   use GenServer
 
-  defstruct ready?: false, type: "mountain"
+  defstruct ready?: false, type: "mountain", id: :none
 
   # Client API
 
-  def start_link() do
-    GenServer.start_link(__MODULE__,%Bicycle{})
+  def start_link(id) do
+    IO.puts "Starting bike: #{id}"
+
+    GenServer.start_link(
+      __MODULE__,
+      id,
+      name: via_tuple(id)
+    )
+  end
+
+  defp via_tuple(id) do
+    {:via, Registry, {:process_registry, {:bike, id}}}
+  end
+
+  def service_bike(bike) do
+    GenServer.cast(via_tuple(bike), {:service, self()})
   end
 
   # Server Callbacks
 
-  def init(bicycle) do
-    {:ok, bicycle}
+  def init(name) do
+    {:ok, %Bicycle{id: name}}
   end
 
   def handle_cast({:service, caller}, state) do
-    send(caller, {:bicycle_serviced, self()})
+    send(caller, {:bicycle_serviced, state.id})
     {:noreply, %Bicycle{state | ready?: true}}
   end
 end
