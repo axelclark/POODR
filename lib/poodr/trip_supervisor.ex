@@ -90,8 +90,6 @@ defmodule Trip.SystemsSupervisor do
 
   def init(_) do
     children = [
-      # worker(Mechanic, []),
-      # supervisor(Registry, [:duplicate, Registry.Preparers], id: :prep),
       supervisor(Registry, [:unique, :process_registry], id: :proc),
       supervisor(TripSupervisor, [])
     ]

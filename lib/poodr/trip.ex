@@ -132,7 +132,7 @@ defmodule Mechanic do
 
   defp service_bicycles(bicycles, trip, state) do
     Enum.reduce bicycles, state, fn bike, state ->
-      Bicycle.service_bike(bike)
+      Bicycle.service(bike)
       Map.put(state, bike, trip)
     end
   end
@@ -159,7 +159,7 @@ defmodule Bicycle do
     {:via, Registry, {:process_registry, {:bike, id}}}
   end
 
-  def service_bike(bike) do
+  def service(bike) do
     GenServer.cast(via_tuple(bike), {:service, self()})
   end
 
